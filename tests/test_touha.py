@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import unittest
+from unittest.mock import patch
 
 from chibi.file.temp import Chibi_temp_path
 from touha import Touhas, Touha
+from touha.snippets import get_backup_date
 
 
 class Touha_db( unittest.TestCase ):
@@ -51,3 +53,20 @@ class Test_add_a_new_touha( Touha_db ):
         touhas.add( self.name )
         touhas_2 = Touhas( self.touhas_db )
         self.assertEqual( touhas[ self.name ], touhas_2[ self.name ], )
+
+
+class Test_create_backup( Touha_db ):
+    def setUp( self ):
+        super().setUp()
+        self.name = "Momiji_Inubashiri"
+
+    @patch( 'touha.touha.Backup.build_dd' )
+    def test_should_do_the_backup_when_create_a_new_backuip( self, build_dd, ):
+        touhas = Touhas( self.touhas_db )
+        touhas.add( "Momiji_Inubashiri" )
+        touha = touhas[ self.name ]
+        touha.new_backup( '/dev/mm' )
+        expected_output = (
+            touha.backup_folder
+            + touha.build_backup_name( get_backup_date() ) )
+        build_dd.assert_called_with( i='/dev/mm', o=expected_output )
