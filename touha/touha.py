@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
+import logging
 import yaml
+import datetime
 
 from chibi.file import Chibi_path
 from chibi.atlas import Chibi_atlas
 from chibi_command.disk.dd import DD
 from touha.snippets import get_backup_date
+
+
+logger = logging.getLogger( 'touhas.touhas' )
 
 
 class Touha( Chibi_atlas ):
@@ -19,6 +24,7 @@ class Touha( Chibi_atlas ):
     def new_backup( self, block, **kw ):
         date = get_backup_date( **kw )
         path = self.build_backup_name( date )
+        logger.info( f"creadno backup en {path} usando el blocke {block}" )
         backup = Backup( path=path, block=block )
         backup.start()
         self.backups.append( backup )
@@ -43,8 +49,13 @@ class Backup( Chibi_atlas ):
         if not result:
             raise NotImplementedError( str( vars( result ) ) )
 
-    def restore( self ):
-        dd = self.build_dd( i=self.path, o=self.block )
+    def restore( self, block=None ):
+        if block is None:
+            block = self.block
+        if block is None:
+            raise NotImplementedError(
+                "bloque no definido para la restauracion" )
+        dd = self.build_dd( i=self.path, o=block )
         result = dd()
         if not result:
             raise NotImplementedError( str( vars( result ) ) )
@@ -53,9 +64,15 @@ class Backup( Chibi_atlas ):
         dd = DD.input_file( i ).output_file( o )
         return dd
 
+    @property
+    def date( self ):
+        str_date = self.path.file_name
+        return datetime.datetime.strptime( str_date, "%Y-%m-%d" )
 
-class Touhas:
-    def __init__( self, path ):
+
+class Touhas():
+    def __init__( self, path, *args, **kw ):
+        super().__init__( *args, **kw )
         self.path = Chibi_path( str( path ) )
         self.load()
 
@@ -63,11 +80,19 @@ class Touhas:
         return len( self._touhas )
 
     def add( self, name ):
+        logger.info( f"agregando touha {name}" )
         new_touha = Touha( path=self.path + name )
         self._touhas[ name ] = new_touha
 
     def __getitem__( self, name ):
-        return self._touhas[ name ]
+        try:
+            return self._touhas[ name ]
+        except KeyError:
+            self.add( name )
+            return self[ name ]
+
+    def __iter__( self ):
+        return iter( self._touhas )
 
     def load( self ):
         if not self.path.exists:

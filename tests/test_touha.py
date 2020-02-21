@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from chibi.file.temp import Chibi_temp_path
 from touha import Touhas, Touha
-from touha.snippets import get_backup_date
+from touha.snippets import transform_date_to_str, get_backup_date
 
 
 class Touha_db( unittest.TestCase ):
@@ -70,3 +70,21 @@ class Test_create_backup( Touha_db ):
             touha.backup_folder
             + touha.build_backup_name( get_backup_date() ) )
         build_dd.assert_called_with( i='/dev/mm', o=expected_output )
+
+
+class Test_backups( Touha_db ):
+    def setUp( self ):
+        super().setUp()
+        self.name = "Momiji_Inubashiri"
+
+    @patch( 'touha.touha.Backup.build_dd' )
+    def test_the_backup_should_know_his_date( self, build_dd, ):
+        touhas = Touhas( self.touhas_db )
+        touhas.add( self.name )
+        touha = touhas[ self.name ]
+        touha.new_backup( '/dev/mm' )
+        backups = touha.backups
+        self.assertTrue( backups )
+        for backup in backups:
+            self.assertEqual(
+                transform_date_to_str( backup.date ), backup.path.file_name )
