@@ -6,16 +6,23 @@ import datetime
 from chibi.file import Chibi_path
 from chibi.atlas import Chibi_atlas
 from chibi_command.disk.dd import DD
+from chibi_command.disk.mount import Mount, Umount
 from touha.snippets import get_backup_date
+from touha.spell_card import Spell_card
 
 
 logger = logging.getLogger( 'touhas.touhas' )
 
 
 class Touha( Chibi_atlas ):
-    def __init__( self, *args, path, **kw ):
-        super().__init__( *args, path=path, **kw )
-        self.name = self.path.base_name
+    def __init__( self, *args, path=None, name=None, **kw ):
+        super().__init__( *args, path=path, name=name, **kw )
+        if name is None:
+            self.name = self.path.base_name
+        else:
+            self.name = name
+        if path is None:
+            self.path = Chibi_path() + self.name
         backups = self.backup_folder
         if not backups.exists:
             backups.mkdir()
@@ -35,6 +42,21 @@ class Touha( Chibi_atlas ):
 
     def build_backup_name( self, name ):
         return self.backup_folder + f"{name}.img"
+
+    def __str__( self ):
+        return self.name
+
+    def __repr__( self ):
+        return f"Touha( name={self.name}, path={self.path} )"
+
+    @classmethod
+    def from_block( cls, block, mount_path ):
+        spell_card = Spell_card( block=block, mount_path=mount_path )
+        return cls.from_spell_card( Spell_card )
+
+    @classmethod
+    def _from_spell_card( cls, spell_card ):
+        return cls( name=spell_card.name, spell_card=spell_card )
 
 
 class Backup( Chibi_atlas ):
@@ -71,8 +93,10 @@ class Backup( Chibi_atlas ):
 
 
 class Touhas():
-    def __init__( self, path, *args, **kw ):
+    def __init__( self, path=None, *args, **kw ):
         super().__init__( *args, **kw )
+        if path is None:
+            path = Chibi_path( 'touhas' )
         self.path = Chibi_path( str( path ) )
         self.load()
 

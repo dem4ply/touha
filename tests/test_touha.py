@@ -88,3 +88,9 @@ class Test_backups( Touha_db ):
         for backup in backups:
             self.assertEqual(
                 transform_date_to_str( backup.date ), backup.path.file_name )
+
+
+class Test_touha( Touha_db ):
+    def test_should_create_the_touha_using_the_name( self ):
+        touha = Touha( name='Momiji' )
+        self.assertEqual( touha.name, 'Momiji' )

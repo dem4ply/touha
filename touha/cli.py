@@ -11,8 +11,14 @@ from argparse import ArgumentParser
 
 from chibi.file import Chibi_path
 from chibi.file.temp import Chibi_temp_path
+from chibi_requests import Chibi_url
 from chibi_command.disk.dd import DD
 from chibi_command.disk.mount import Mount, Umount
+from chibi_command.disk.format import Ext4, Vfat
+from chibi_command.file import Bsdtar
+
+from touha.mount import _mount, _umount
+from touha.spell_card import Spell_card
 
 logger_formarter = '%(levelname)s %(name)s %(asctime)s %(message)s'
 logger = logging.getLogger( 'touhas.cli' )
@@ -62,7 +68,7 @@ def _list( args ):
     touhas = get_touhas( args )
     for touha in touhas:
         print( touha )
-        print_backups( touhas[ touhas ] )
+        print_backups( touhas[ touha ] )
 
 
 def print_backups( touha ):
@@ -74,18 +80,10 @@ def print_backups( touha ):
 
 def _backup( args ):
     touhas = get_touhas( args )
-    parts = args.block.dir_name.find( f'{args.block.base_name}.+' )
-    try:
-        for block in  parts:
-            hostname = find_hostname_on_part(
-                block, args.backup_path + 'mnt' )
-            if hostname:
-                logger.info( f"se encontro la touha {hostname}" )
-                touha = touhas[ hostname ]
-                touha.new_backup( args.block,  )
-                break
-    except PermissionError as e:
-        logger.warning( str( e ) )
+    spell_card = Spell_card( block=args.block, mount_path=args.backup_path, )
+    touha = touhas[ spell_card.name ]
+    touha.new_backup( args.block )
+    return
 
 
 def _restore( args ):
@@ -95,32 +93,59 @@ def _restore( args ):
     if args.touha:
         touha_name = args.touha
     else:
-        touha_name = find_hostname_on_block(
-            block, args.backup_path + 'mnt' )
+        spell_card = Spell_card( block=args.block, mount_path=args.backup_path, )
+        touha_name = spell_card.name
+
     try:
         touha = touhas[ touha_name ]
     except KeyError as e:
-        print( f"no se encontro la touha {e}" )
+        logger.info( f"no se encontro la touha {e}" )
         return
 
-    backup = False
     for backup in touha.backups:
         if backup.date == args.date:
             break
-        else:
-            backup = False
-    if not backup:
-        print( f"no se encontro un backup de la fecha f{args.date}" )
-        print( f"backups validos para f{touha.name}"  )
+    else:
+        logger.info( f"no se encontro un backup de la fecha f{args.date}" )
+        logger.info( f"backups validos para f{touha.name}"  )
         print_backups( touha )
         return
 
     logger.info(
         f"iniciando restauracion del backup {backup.path} en {block}" )
-    try:
-        backup.restore( block )
-    except PermissionError as e:
-        logger.warning( str( e ) )
+
+    backup.restore( block )
+
+
+def _format( args ):
+    block = args.block
+    boot = f"{block}p1"
+    root = f"{block}p2"
+
+    Vfat( boot ).run()
+    Ext4( root ).run()
+
+    if args.version == "4":
+        image_url = Chibi_url(
+            'http://os.archlinuxarm.org/os/ArchLinuxARM-rpi-4-latest.tar.gz' )
+
+    else:
+        raise NotImplementedError(
+            f"la version de rasp {args.version} no esta implementada" )
+
+    image_path = args.backup_path + 'image'
+    if not image_path.exists:
+        image_path.mkdir()
+
+    image = image_path + image_url.base_name
+    if not image.exists:
+        image = image_url.download( path=image_path )
+
+    spell_card = Spell_card( block=args.block, mount_path=args.backup_path, )
+
+    Bsdtar( '-xpf', image, '-C', spell_card.root ).run()
+    tmp_boot = spell_card.root + 'boot' + '*'
+    tmp_boot.move( spell_card.boot )
 
 
 def main():
@@ -152,6 +177,48 @@ def main():
     parser_restore.add_argument(
         '--date', '-d', required=True, help='date' )
 
+    parser_format = sub_parsers.add_parser( 'format', help='do a format', )
+    parser_format.add_argument(
+        '--block', '-b', required=True, type=Chibi_path, help='block' )
+    parser_format.add_argument(
+        '--version', '-v', required=True, help='raspberry pi version' )
+
+    parser_mount = sub_parsers.add_parser( 'mount', help='mount the touha', )
+    parser_mount.add_argument(
+        '--block', '-b', required=True, type=Chibi_path, help='block' )
+
+    parser_umount = sub_parsers.add_parser( 'umount', help='umount the touha', )
+
+
+    parser_spell_card = sub_parsers.add_parser(
+        'spell_card', help='check the spell card', )
+    parser_spell_card.add_argument(
+        '--block', '-b', required=True, type=Chibi_path, help='block' )
+
+    spell_card_sub_parser = parser_spell_card.add_subparsers(
+        dest='spell_card_command', help='spell_card help' )
+
+    parser_spell_card_print = spell_card_sub_parser.add_parser(
+        'list', help='check the spell card', )
+    parser_spell_card_print.add_argument(
+        '--home', action="store_true", help='decide if is going to print home' )
+
+    parser_spell_card_clone = spell_card_sub_parser.add_parser(
+        'backup', help='backup spell card', )
+    parser_spell_card_clone.add_argument(
+        '--destination', '-d', default='.', type=Chibi_path,
+        help='destino' )
+    parser_spell_card_clone.add_argument(
+        '--home', action="store_true", help='decide if is going to print home' )
+
+    parser_spell_card_restore = spell_card_sub_parser.add_parser(
+        'restore', help='backup spell card', )
+    parser_spell_card_restore.add_argument(
+        '--destination', '-d', default='.', type=Chibi_path,
+        help='destino' )
+    parser_spell_card_restore.add_argument(
+        '--touha', help='nombre de la touha a usar' )
+
     args = parser.parse_args()
 
     logging.basicConfig( level=args.log_level, format=logger_formarter )
@@ -162,6 +229,29 @@ def main():
         _backup( args )
     elif args.command == 'restore':
         _restore( args )
+    elif args.command == 'format':
+        _format( args )
+    elif args.command == 'mount':
+        Spell_card(
+            block=args.block, mount_path=args.backup_path,
+            unmount_on_dead=False )
+    elif args.command == 'umount':
+        Spell_card( mount_path=args.backup_path, unmount_on_dead=True )
+    elif args.command == 'spell_card':
+        spell_card = Spell_card(
+            block=args.block, mount_path=args.backup_path,
+            unmount_on_dead=True )
+        if args.spell_card_command == "list":
+            spell_card.check_spell_card( home=args.home )
+        if args.spell_card_command == "backup":
+            spell_card.clone( path=args.destination, home=args.home, )
+        if args.spell_card_command == "restore":
+            spell_card.restore( path=args.destination, touha_name=args.touha, )
+        else:
+            logger.error(
+                "spell card commando no encontrado "
+                f"{args.spell_card_command}"
+            )
     else:
         logger.error( f"commando no encontrado {args.command}" )
 
