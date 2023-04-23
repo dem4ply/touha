@@ -1,10 +1,12 @@
 from chibi_command.disk.mount import Mount, Umount
+from touha.snippets import get_boot_root
 
 
 def _mount( args ):
     block = args.block
-    boot = f"{block}p1"
-    root = f"{block}p2"
+    boot, root = get_boot_root( block )
+    #boot = f"{block}p1"
+    #root = f"{block}p2"
 
     boot_path = args.backup_path + 'boot'
     root_path = args.backup_path + 'root'

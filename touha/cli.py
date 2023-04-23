@@ -19,6 +19,7 @@ from chibi_command.file import Bsdtar
 
 from touha.mount import _mount, _umount
 from touha.spell_card import Spell_card
+from touha.snippets import get_boot_root
 
 logger_formarter = '%(levelname)s %(name)s %(asctime)s %(message)s'
 logger = logging.getLogger( 'touhas.cli' )
@@ -119,16 +120,22 @@ def _restore( args ):
 
 def _format( args ):
     block = args.block
-    boot = f"{block}p1"
-    root = f"{block}p2"
+    boot, root = get_boot_root( block )
+    #boot = f"{block}p1"
+    #root = f"{block}p2"
 
+    logger.info( f"formateando {boot}" )
     Vfat( boot ).run()
+    logger.info( f"formateando {root}" )
     Ext4( root ).run()
 
     if args.version == "4":
         image_url = Chibi_url(
             'http://os.archlinuxarm.org/os/ArchLinuxARM-rpi-4-latest.tar.gz' )
-
+    if args.version == '3':
+        image_url = Chibi_url(
+            'http://os.archlinuxarm.org/os/ArchLinuxARM'
+            '-rpi-armv7-latest.tar.gz' )
     else:
         raise NotImplementedError(
             f"la version de rasp {args.version} no esta implementada" )

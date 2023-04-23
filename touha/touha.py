@@ -26,7 +26,7 @@ class Touha( Chibi_atlas ):
         backups = self.backup_folder
         if not backups.exists:
             backups.mkdir()
-        self.backups = [ Backup( path=b )for b in backups.ls() ]
+        self.backups = [ Backup( path=b ) for b in backups.ls() ]
 
     def new_backup( self, block, **kw ):
         date = get_backup_date( **kw )

@@ -3,6 +3,8 @@ from chibi_command.disk.mount import Mount, Umount
 from chibi.file import Chibi_path
 from chibi_command.rsync import Rsync
 
+from touha.snippets import get_boot_root
+
 
 logger = logging.getLogger( 'touhas.spell_card' )
 
@@ -59,9 +61,13 @@ class Spell_card:
         return self.root + 'etc/ssh/sshd_config'
 
     @property
+    def fstab( self ):
+        return self.root + 'etc/fstab'
+
+    @property
     def all( self ):
         return (
-            self.hostname, self.hosts, self.adhoc_service,
+            self.hostname, self.hosts, self.adhoc_service, self.fstab,
             self.wlan0_adhoc_config, self.torrc, self.torrc_sshd,
             self.wpa_supplicant, self.sshd_config,
         )
@@ -117,8 +123,7 @@ class Spell_card:
         logger.info( f"se encontro la spell card de {self.name}" )
 
     def mount( self ):
-        boot = f"{self._block}p1"
-        root = f"{self._block}p2"
+        boot, root = get_boot_root( self._block )
 
         if not self.boot.exists:
             self.boot.mkdir()

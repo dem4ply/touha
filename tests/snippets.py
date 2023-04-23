@@ -3,6 +3,7 @@ import datetime
 import unittest
 
 from touha.snippets import transform_date_to_str, get_backup_date
+from touha.snippets import get_boot_root
 
 
 class Test_transform_date_to_str( unittest.TestCase ):
@@ -34,3 +35,12 @@ class Test_get_backup_date( unittest.TestCase ):
         expected = '2000-01-02'
         result = get_backup_date( date=date )
         self.assertEqual( expected, result )
+
+
+class Test_get_boot_root( unittest.TestCase ):
+    def test_with_sdc_should_return_sdc1_and_sdc2( self ):
+        boot, root = get_boot_root( '/dev/sdc' )
+        boot_expected = '/dev/sdc1'
+        root_expected = '/dev/sdc2'
+        self.assertEqual( boot_expected, boot )
+        self.assertEqual( root_expected, root )
