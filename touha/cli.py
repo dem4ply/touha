@@ -2,6 +2,7 @@ import os
 import argparse
 import sys
 import datetime
+import time
 
 
 from touha import Touhas
@@ -82,8 +83,9 @@ def print_backups( touha ):
 def _backup( args ):
     touhas = get_touhas( args )
     spell_card = Spell_card( block=args.block, mount_path=args.backup_path, )
-    touha = touhas[ spell_card.name ]
-    touha.new_backup( args.block )
+    spell_card.build_new_backup()
+    #touha = touhas[ spell_card.name ]
+    #touha.new_backup( args.block )
     return
 
 
@@ -124,18 +126,32 @@ def _format( args ):
     #boot = f"{block}p1"
     #root = f"{block}p2"
 
-    logger.info( f"formateando {boot}" )
-    Vfat( boot ).run()
-    logger.info( f"formateando {root}" )
-    Ext4( root ).run()
+    if not args.only_install:
+        logger.info( f"formateando {boot}" )
+        Vfat( boot ).run()
+        logger.info( f"formateando {root}" )
+        Ext4( root ).run()
+        logger.info( "esperando 10 segundos antes de la instalacion" )
+        time.sleep( 10 )
 
     if args.version == "4":
-        image_url = Chibi_url(
-            'http://os.archlinuxarm.org/os/ArchLinuxARM-rpi-4-latest.tar.gz' )
-    if args.version == '3':
-        image_url = Chibi_url(
-            'http://os.archlinuxarm.org/os/ArchLinuxARM'
-            '-rpi-armv7-latest.tar.gz' )
+        if args.arch == '64':
+            image_url = Chibi_url(
+                'http://os.archlinuxarm.org/os/ArchLinuxARM-rpi'
+                '-aarch64-latest.tar.gz' )
+        else:
+            image_url = Chibi_url(
+                'http://os.archlinuxarm.org/os/ArchLinuxARM-rpi'
+                '-armv7-latest.tar.gz' )
+    elif args.version == '3':
+        if args.arch == '64':
+            image_url = Chibi_url(
+                'http://os.archlinuxarm.org/os/'
+                'ArchLinuxARM-rpi-aarch64-latest.tar.gz' )
+        else:
+            image_url = Chibi_url(
+                'http://os.archlinuxarm.org/os/ArchLinuxARM'
+                '-rpi-armv7-latest.tar.gz' )
     else:
         raise NotImplementedError(
             f"la version de rasp {args.version} no esta implementada" )
@@ -150,7 +166,7 @@ def _format( args ):
 
     spell_card = Spell_card( block=args.block, mount_path=args.backup_path, )
 
-    Bsdtar( '-xpf', image, '-C', spell_card.root ).run()
+    Bsdtar( '-v', '-xpf', image, '-C', spell_card.root ).run()
     tmp_boot = spell_card.root + 'boot' + '*'
     tmp_boot.move( spell_card.boot )
 
@@ -184,11 +200,18 @@ def main():
     parser_restore.add_argument(
         '--date', '-d', required=True, help='date' )
 
-    parser_format = sub_parsers.add_parser( 'format', help='do a format', )
+    parser_format = sub_parsers.add_parser(
+        'format', help='format the devices and install the clean image', )
     parser_format.add_argument(
         '--block', '-b', required=True, type=Chibi_path, help='block' )
     parser_format.add_argument(
         '--version', '-v', required=True, help='raspberry pi version' )
+    parser_format.add_argument(
+        '--arch', '-a', required=False, help='raspberry pi arch' )
+    parser_format.add_argument(
+        '--only_install', required=False,
+        default=False, action="store_true",
+        help='no formaterara las particiones y solo instalara la imagen' )
 
     parser_mount = sub_parsers.add_parser( 'mount', help='mount the touha', )
     parser_mount.add_argument(

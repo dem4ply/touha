@@ -7,6 +7,7 @@ from chibi.file import Chibi_path
 from chibi.atlas import Chibi_atlas
 from chibi_command.disk.dd import DD
 from chibi_command.disk.mount import Mount, Umount
+from chibi_command.file import Tar
 from touha.snippets import get_backup_date
 from touha.spell_card import Spell_card
 
@@ -66,6 +67,10 @@ class Backup( Chibi_atlas ):
     def start( self ):
         if not self.block:
             raise ValueError( "was expected the block is going to clone" )
+
+        command = Tar.verbose().create().file( 'file.tar' )
+        command = command.input_directory( '/tmp/' )
+
         dd = self.build_dd( i=self.block, o=self.path )
         result = dd()
         if not result:
@@ -89,6 +94,8 @@ class Backup( Chibi_atlas ):
     @property
     def date( self ):
         str_date = self.path.file_name
+        if '__' in str_date:
+            str_date = str_date.split( '__', 1 )[0]
         return datetime.datetime.strptime( str_date, "%Y-%m-%d" )
 
 

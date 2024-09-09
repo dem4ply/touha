@@ -2,20 +2,26 @@ import logging
 from chibi_command.disk.mount import Mount, Umount
 from chibi.file import Chibi_path
 from chibi_command.rsync import Rsync
+from chibi_command.file import Tar
 
-from touha.snippets import get_boot_root
+from touha.snippets import get_boot_root, get_backup_date
 
 
 logger = logging.getLogger( 'touhas.spell_card' )
 
 class Spell_card:
-    def __init__( self, block=None, mount_path=None, unmount_on_dead=True ):
+    def __init__(
+            self, block=None, mount_path=None, unmount_on_dead=True,
+            root_path=None ):
         self._mount_path = mount_path
         self._block = block
         if block is not None:
             self.mount()
             self._prepare()
         self.unmount_on_dead = unmount_on_dead
+        if root_path is None:
+            root_path = Chibi_path( '.' ) + 'touhas'
+        self.root_path = Chibi_path( root_path )
 
     @property
     def name( self ):
@@ -76,6 +82,9 @@ class Spell_card:
     def home( self ):
         return self.root + 'home'
 
+    @property
+    def root_home( self ):
+        return self.root + 'root'
 
     def check_spell_card( self, home=False ):
         for spell in self.all:
@@ -99,7 +108,7 @@ class Spell_card:
         touha = touhas[ self.name ]
         folders = self.all
         if home:
-            folders = ( *folders, self.home )
+            folders = ( *folders, self.home, self.root_home )
         path = touha.path + 'spell_card'
         if clean and path.exists:
             path.delete()
@@ -116,7 +125,8 @@ class Spell_card:
         touhas = Touhas( path )
         touha = touhas[ touha_name ]
         backup_path = touha.path + 'spell_card' + 'root/'
-        rsync = Rsync.clone_dir().verbose().ignore()
+        #rsync = Rsync.clone_dir().verbose().ignore()
+        rsync = Rsync.archive_mode().checksum().verbose()
         rsync.run( backup_path, self.root )
 
     def _prepare( self ):
@@ -152,3 +162,29 @@ class Spell_card:
     def __del__( self ):
         if self.unmount_on_dead:
             self.umount()
+
+    def backups( self ):
+        return self.touha_path.ls()
+
+    def build_new_backup( self ):
+        date = get_backup_date()
+        if not self.backup_folder.exists:
+            self.backup_folder.mkdir()
+        root = Tar.compress().create().file(
+            self.backup_folder + f'{date}__root.tar.gz' )
+        root = root.input_directory( self.root )
+
+        boot = Tar.compress().create().file(
+            self.backup_folder + f'{date}__boot.tar.gz' )
+        boot = boot.input_directory( self.boot )
+
+        root.run()
+        boot.run()
+
+    @property
+    def backup_folder( self ):
+        return self.touha_path + 'backups'
+
+    @property
+    def touha_path( self ):
+        return self.root_path + self.name
