@@ -12,3 +12,10 @@ pep8
 jedi
 pipdeptree
 rope
+
+
+flake8
+Sphinx
+twine
+pycodestyle
+build
