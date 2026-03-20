@@ -33,6 +33,7 @@ class Test_backup_start( Backup_db ):
 class Test_backup_restore( Backup_db ):
     pass
 
+
 class Test_backup_build_dd( Backup_db ):
     def test_should_create_the_expected_result( self ):
         path = self.touhas_db + 'backup_1'
