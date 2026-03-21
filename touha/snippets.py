@@ -3,6 +3,11 @@ import datetime
 from chibi.file import Chibi_path
 
 
+def parse_phase_execute_args( param ):
+    k, v = param.split( '=', 1 )
+    return k, v
+
+
 def transform_date_to_str( date ):
     return date.strftime( "%Y-%m-%d" )
 
@@ -25,3 +30,12 @@ def get_boot_root( block ):
     else:
         raise NotImplementedError(
             f"no esta implementado el error para los bloques {block}" )
+
+
+def is_in_level( level, expected ):
+    translate = { 'info': 10, 'debug': 0 }
+    if isinstance( level, str ):
+        level = translate[ level.lower() ]
+    if isinstance( expected, str ):
+        expected= translate[ expected.lower() ]
+    return level <= expected

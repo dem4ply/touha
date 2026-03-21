@@ -11,7 +11,7 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements = [ 'chibi', 'chibi_command', 'chibi_requests' ]
+requirements = [ 'chibi', 'chibi_command', 'chibi_requests', 'chibi_fstab' ]
 
 setup(
     author="Dem4ply",

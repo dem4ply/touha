@@ -10,9 +10,11 @@ import logging
 import random
 from argparse import ArgumentParser
 
+from chibi_atlas import Chibi_atlas
 from chibi.file import Chibi_path
 from chibi.file.temp import Chibi_temp_path
 from chibi_requests import Chibi_url
+from chibi_command.disk.lsblk import Lsblk
 from chibi_command.disk.dd import DD
 from chibi_command.disk.mount import Mount, Umount
 from chibi_command.disk.format import Ext4, Vfat
@@ -20,7 +22,7 @@ from chibi_command.file import Bsdtar
 
 from touha.mount import _mount, _umount
 from touha.spell_card import Spell_card
-from touha.snippets import get_boot_root
+from touha.snippets import get_boot_root, parse_phase_execute_args
 
 logger_formarter = '%(levelname)s %(name)s %(asctime)s %(message)s'
 logger = logging.getLogger( 'touhas.cli' )
@@ -249,6 +251,65 @@ def main():
     parser_spell_card_restore.add_argument(
         '--touha', help='nombre de la touha a usar' )
 
+    parser_spell_card_rename = spell_card_sub_parser.add_parser(
+        'rename', help='cambia el nomrbe de la spell card o hostname', )
+    parser_spell_card_rename.add_argument(
+        "new_name",
+        help="nuevo nombre de la touha", )
+
+    parser_spell_card_fstab = spell_card_sub_parser.add_parser(
+        'phase', help='phases de la spellcard', )
+
+    parser_spell_card_phase_sub_parser = (
+        parser_spell_card_fstab.add_subparsers(
+            dest='spell_card_phase_command',
+            help='subcomando para las fases', )
+    )
+    parser_spell_card_phase_exe = (
+        parser_spell_card_phase_sub_parser.add_parser(
+        'execute', help='ejecuta fases del spellcard', )
+    )
+    parser_spell_card_phase_exe.add_argument(
+        "phase", help="nombre de la fase que se ejecutara", )
+
+    parser_spell_card_phase_exe.add_argument(
+        "--arg", dest="args", nargs="*", type=parse_phase_execute_args,
+        help=(
+            "parametros tipo tuplas separados por por un simbolo de ="
+            "'ip=200.200.200.1 MASK=24'" ), )
+
+    parser_spell_card_phase_exe.add_argument(
+        "--force", dest="force", default=False, action="store_true",
+        help="nombre de la fase que se ejecutara", )
+
+    parser_spell_card_phase_status = (
+        parser_spell_card_phase_sub_parser.add_parser(
+        'status', help='revisa el status de la fase', )
+    )
+    parser_spell_card_phase_status.add_argument(
+        "phase", help="nombre de la fase", )
+
+    parser_spell_card_phase_status.add_argument(
+        "--level", default="info",
+        help="nivel de impresion del status, info, debug", )
+
+
+    parser_spell_card_fstab = spell_card_sub_parser.add_parser(
+        'fstab', help='lee o cambia el fstab', )
+
+    parser_spell_card_fstab_sub_parser = (
+        parser_spell_card_fstab.add_subparsers(
+            dest='spell_card_fstab_command', help='agrega bloques al fstab', )
+    )
+    parser_spell_card_fstab_add = parser_spell_card_fstab_sub_parser.add_parser(
+        'add', help='lee o cambia el fstab', )
+
+    parser_spell_card_fstab_add.add_argument(
+        "dev_block",
+        help="bloque de fs en dev/sd*", )
+
+    parser_blocks = sub_parsers.add_parser( 'blocks', help='print lsblk', )
+
     args = parser.parse_args()
 
     logging.basicConfig( level=args.log_level, format=logger_formarter )
@@ -273,15 +334,58 @@ def main():
             unmount_on_dead=True )
         if args.spell_card_command == "list":
             spell_card.check_spell_card( home=args.home )
-        if args.spell_card_command == "backup":
+        elif args.spell_card_command == "backup":
             spell_card.clone( path=args.destination, home=args.home, )
-        if args.spell_card_command == "restore":
+        elif args.spell_card_command == "restore":
             spell_card.restore( path=args.destination, touha_name=args.touha, )
+        elif args.spell_card_command == "rename":
+            spell_card.name = args.new_name
+        elif args.spell_card_command == "phase":
+            if args.spell_card_phase_command:
+                if args.spell_card_phase_command == 'status':
+                    spell_card.phases[ args.phase ].full_status(
+                        level=args.level )
+                if args.spell_card_phase_command == 'execute':
+                    if not args.args:
+                        phase_args = Chibi_atlas()
+                    else:
+                        phase_args = Chibi_atlas( dict( args.args ) )
+                    if args.phase == 'all':
+                        for phase in spell_card.phases.values():
+                            phase.run( force=args.force, **phase_args )
+                    else:
+                        spell_card.phases[ args.phase ].run(
+                            force=args.force, **phase_args )
+            else:
+                spell_card.check_phases()
+        elif args.spell_card_command == "fstab":
+            if args.spell_card_fstab_command:
+                if args.spell_card_fstab_command == 'add':
+                    spell_card.add_block_in_fstab( args.dev_block )
+                else:
+                    logger.error(
+                        "spell card commando de fstab no encontrado "
+                        f"{args.spell_card_fstab_command}"
+                    )
+
+            else:
+                spell_card.print_fstab()
         else:
             logger.error(
                 "spell card commando no encontrado "
                 f"{args.spell_card_command}"
             )
+    elif args.command == 'blocks':
+        blocks = Lsblk( '-o', '+SIZE', ).run().result
+        for name, block in blocks.items():
+            print( name )
+            if block.childs:
+                for c in block.childs:
+                    print(
+                        f"\t{c.name} {c.fstype} "
+                        f"{c.size} "
+                        f"{c.uuid} "
+                    )
     else:
         logger.error( f"commando no encontrado {args.command}" )
 

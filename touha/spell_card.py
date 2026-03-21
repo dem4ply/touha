@@ -1,10 +1,16 @@
 import logging
-from chibi_command.disk.mount import Mount, Umount
+from chibi_atlas import Chibi_atlas
 from chibi.file import Chibi_path
+from chibi.file.other import Chibi_systemd, Chibi_conf_env
+from chibi.file.temp import Chibi_temp_path
+from chibi_command.disk.mount import Mount, Umount
 from chibi_command.rsync import Rsync
 from chibi_command.file import Tar
+from chibi_command.disk.lsblk import Lsblk
+from chibi_fstab import Chibi_fstab
 
 from touha.snippets import get_boot_root, get_backup_date
+from touha.phases.wireless_adhoc import Wireless_adhoc
 
 
 logger = logging.getLogger( 'touhas.spell_card' )
@@ -34,6 +40,21 @@ class Spell_card:
                 '-', '_' ).strip()
             return self._name
 
+    @name.setter
+    def name( self, value ):
+        if not self.hostname.exists:
+            raise OSError(
+                "No existe el archivo de hostnamae '{self.hostname}'" )
+        host = self.hostname.open()
+        new_name = value.replace( '_', '-' ).strip()
+        host.write( new_name )
+        logger.info( f"se cambio el nombre de la touha por {new_name}" )
+        # si no tiene le nombre en caache ignora la excepcion
+        try:
+            del self._name
+        except:
+            pass
+
     @property
     def hostname( self ):
         return self.root + 'etc' + 'hostname'
@@ -44,11 +65,15 @@ class Spell_card:
 
     @property
     def adhoc_service( self ):
-        return self.root + 'etc/systemd/system/network_wireless_adhoc@.service'
+        path = self.root + 'etc/systemd/system/network_wireless_adhoc@.service'
+        path = Chibi_path( path, chibi_file_class=Chibi_systemd )
+        return path
 
     @property
     def wlan0_adhoc_config( self ):
-        return self.root + 'etc/conf.d/network_wireless_adhoc@wlan0'
+        path = self.root + 'etc/conf.d/network_wireless_adhoc@wlan0'
+        path = Chibi_path( path, chibi_file_class=Chibi_conf_env )
+        return path
 
     @property
     def torrc( self ):
@@ -68,7 +93,9 @@ class Spell_card:
 
     @property
     def fstab( self ):
-        return self.root + 'etc/fstab'
+        result = self.root + 'etc/fstab'
+        result = Chibi_path( result, chibi_file_class=Chibi_fstab )
+        return result
 
     @property
     def all( self ):
@@ -85,6 +112,23 @@ class Spell_card:
     @property
     def root_home( self ):
         return self.root + 'root'
+
+    @property
+    def phases( self ):
+        """
+        contrulle el dicionario de phases para la spell card
+        """
+        phases_list = [
+            Wireless_adhoc( self )
+        ]
+        return { p.name: p for p in phases_list }
+
+    def check_phases( self ):
+        """
+        imprime el status de la face de la spell card
+        """
+        for phase in self.phases.values():
+            print( f"{phase.name}: {phase.status}" )
 
     def check_spell_card( self, home=False ):
         for spell in self.all:
@@ -188,3 +232,100 @@ class Spell_card:
     @property
     def touha_path( self ):
         return self.root_path + self.name
+
+    def print_fstab( self ):
+        from chibi_fstab.snippets import to_line
+        fstab = self.fstab.open().read()
+        for fs in fstab:
+            print( to_line( fs ) )
+
+    def add_block_in_fstab( self, block ):
+        path_block = Chibi_path( block )
+        if not path_block.exists:
+            logging.error( f"no se encontro el bloque '{block}'" )
+            raise OSError( f"no se encontro el bloque '{block}'" )
+        # blocks = Lsblk( block ).run()
+        blocks = Lsblk( '-o', '+SIZE', block ).run().result
+        partitions = blocks[ path_block.base_name ].childs
+        by_label = { p.label: p for p in partitions }
+        try:
+            tmp = by_label[ 'TMP' ]
+            var = by_label[ 'VAR' ]
+            home = by_label[ 'HOME' ]
+        except KeyError as e:
+            logger.error(
+                "las particiones no tienen asignado las etiquetas, "
+                f"usa e2label {block}X {e}"
+            )
+            raise
+        tmp_fstab = Chibi_atlas( {
+            'uuid': tmp.uuid,
+            'mount': '/tmp',
+            'fstype': tmp.fstype,
+            'options': 'rw,relatime',
+            'required': 0,
+            'fs_passno': 2
+        } )
+        var_fstab = Chibi_atlas( {
+            'uuid': var.uuid,
+            'mount': '/var',
+            'fstype': var.fstype,
+            'options': 'rw,relatime',
+            'required': 0,
+            'fs_passno': 2
+        } )
+        home_fstab = Chibi_atlas( {
+            'uuid': home.uuid,
+            'mount': '/home',
+            'fstype': home.fstype,
+            'options': 'rw,relatime',
+            'required': 0,
+            'fs_passno': 2
+        } )
+        fstab_file = self.fstab.open()
+        fstab_content = fstab_file.read()
+        fstab_by_uuid = { fs.uuid: fs for fs in fstab_content }
+        if tmp_fstab.uuid not in fstab_by_uuid:
+            fstab_content.append( tmp_fstab )
+        else:
+            logger.info(
+                f"block {tmp.name} con uuid {tmp_fstab.uuid} "
+                "ya se encuentra en fstab" )
+        if var_fstab.uuid not in fstab_by_uuid:
+            fstab_content.append( var_fstab )
+        else:
+            logger.info(
+                f"block {var.name} con uuid {var_fstab.uuid} "
+                "ya se encuentra en fstab" )
+        if home_fstab.uuid not in fstab_by_uuid:
+            fstab_content.append( home_fstab )
+        else:
+            logger.info(
+                f"block {home.name} con uuid {home_fstab.uuid} "
+                "ya se encuentra en fstab" )
+
+        block_home = path_block.dir_name + home.name
+        block_var = path_block.dir_name + var.name
+
+        tmp_home_mount = Chibi_temp_path( delete_on_del=False )
+        tmp_var_mount = Chibi_temp_path( delete_on_del=False )
+
+
+        if not Mount( block_home, tmp_home_mount ).run():
+            raise OSError( f"no se pudo montar {block_home}" )
+        if not Mount( block_var, tmp_var_mount ).run():
+            raise OSError( f"no se pudo montar {block_var}" )
+
+        rsync = Rsync.archive_mode().verbose().ignore_existing()
+        rsync.run( self.root + 'var', tmp_var_mount )
+        rsync.run( self.root + 'home', tmp_home_mount )
+
+        if not Umount( block_home ).run():
+            raise OSError( f"no se pudo desmontar {block_home}" )
+        if not Umount( block_var ).run():
+            raise OSError( f"no se pudo desmontar {block_var}" )
+
+        tmp_home_mount.delete()
+        tmp_var_mount.delete()
+
+        fstab_file.write( fstab_content )
