@@ -142,7 +142,11 @@ class Service( Phase ):
             Chibi_path( '/' )
             + full_wanted_name.relative_to( self.spell_card.root )
         )
-        self.service.link( absolut_path_in_sd )
+        absolute_path_service_in_sd = (
+            Chibi_path( '/' )
+            + self.service.relative_to( self.spell_card.root )
+        )
+        absolute_path_service_in_sd.link( full_wanted_name )
 
     def validate_args( self, **kw ):
         raise NotImplementedError
@@ -169,7 +173,9 @@ class Service( Phase ):
 
     @property
     def wanted_service_link( self ):
-        return self.wanted_path + self.service.base_name
+        return (
+            self.wanted_path
+            + self.service.base_name.replace( "@", "@wlan0" ) )
 
     @property
     def wanted_by( self ):
