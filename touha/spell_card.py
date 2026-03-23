@@ -11,6 +11,8 @@ from chibi_fstab import Chibi_fstab
 
 from touha.snippets import get_boot_root, get_backup_date
 from touha.phases.wireless_adhoc import Wireless_adhoc
+from touha.phases.wireless_common import Wireless_common
+from touha.phases.sshd import Sshd
 
 
 logger = logging.getLogger( 'touhas.spell_card' )
@@ -18,9 +20,10 @@ logger = logging.getLogger( 'touhas.spell_card' )
 class Spell_card:
     def __init__(
             self, block=None, mount_path=None, unmount_on_dead=True,
-            root_path=None ):
+            root_path=None, home=None ):
         self._mount_path = mount_path
         self._block = block
+        self._home = home
         if block is not None:
             self.mount()
             self._prepare()
@@ -119,7 +122,9 @@ class Spell_card:
         contrulle el dicionario de phases para la spell card
         """
         phases_list = [
-            Wireless_adhoc( self )
+            Wireless_adhoc( self ),
+            Wireless_common( self ),
+            Sshd( self ),
         ]
         return { p.name: p for p in phases_list }
 
@@ -189,11 +194,23 @@ class Spell_card:
         if not Mount( root, self.root ).run():
             raise OSError( f"no se pudo montar {root}" )
 
+        if self._home:
+            if not self._home.exists:
+                raise NotImplemented(
+                    f"no existe el bloque de home '{self._home}'" )
+            if not Mount( self._home, self.home ).run():
+                raise OSError( f"no se pudo montar {self._home}" )
+
     def umount( self ):
+        if self._home:
+            if not Umount( self.home ).run():
+                logger.warning( f"no se pudo desmontar {self.home}" )
+
         if not Umount( self.boot ).run():
             logger.warning( f"no se pudo desmontar {self.boot}" )
         if not Umount( self.root ).run():
             logger.warning( f"no se pudo desmontar {self.root}" )
+
 
     @property
     def boot( self ):

@@ -23,6 +23,8 @@ from chibi_command.file import Bsdtar
 from touha.mount import _mount, _umount
 from touha.spell_card import Spell_card
 from touha.snippets import get_boot_root, parse_phase_execute_args
+from chibi.config import basic_config, load as load_config
+from chibi.config import default_file_load, configuration
 
 logger_formarter = '%(levelname)s %(name)s %(asctime)s %(message)s'
 logger = logging.getLogger( 'touhas.cli' )
@@ -173,7 +175,7 @@ def _format( args ):
     tmp_boot.move( spell_card.boot )
 
 
-def main():
+def build_args():
     parser = argparse.ArgumentParser(
         "tool for backup and restore rasberry pi sd cards" )
     parser.add_argument(
@@ -227,6 +229,10 @@ def main():
     parser_spell_card.add_argument(
         '--block', '-b', required=True, type=Chibi_path, help='block' )
 
+    parser_spell_card.add_argument(
+        '--home_block', required=False, type=Chibi_path,
+        help='block de archivos de home' )
+
     spell_card_sub_parser = parser_spell_card.add_subparsers(
         dest='spell_card_command', help='spell_card help' )
 
@@ -272,6 +278,7 @@ def main():
     parser_spell_card_phase_exe.add_argument(
         "phase", help="nombre de la fase que se ejecutara", )
 
+
     parser_spell_card_phase_exe.add_argument(
         "--arg", dest="args", nargs="*", type=parse_phase_execute_args,
         help=(
@@ -281,6 +288,14 @@ def main():
     parser_spell_card_phase_exe.add_argument(
         "--force", dest="force", default=False, action="store_true",
         help="nombre de la fase que se ejecutara", )
+
+    parser_spell_card_phase_enable = (
+        parser_spell_card_phase_sub_parser.add_parser(
+        'enable', help='activa la fase de la spell card', )
+    )
+
+    parser_spell_card_phase_enable.add_argument(
+        "phase", help="nombre de la fase que se ejecutara", )
 
     parser_spell_card_phase_status = (
         parser_spell_card_phase_sub_parser.add_parser(
@@ -311,8 +326,15 @@ def main():
     parser_blocks = sub_parsers.add_parser( 'blocks', help='print lsblk', )
 
     args = parser.parse_args()
+    return args
 
-    logging.basicConfig( level=args.log_level, format=logger_formarter )
+
+def main():
+    default_file_load( 'touha.py', touch=True )
+
+    args = build_args()
+
+    basic_config( args.log_level )
 
     if args.command == 'list':
         _list( args )
@@ -331,7 +353,7 @@ def main():
     elif args.command == 'spell_card':
         spell_card = Spell_card(
             block=args.block, mount_path=args.backup_path,
-            unmount_on_dead=True )
+            unmount_on_dead=True, home=args.home_block )
         if args.spell_card_command == "list":
             spell_card.check_spell_card( home=args.home )
         elif args.spell_card_command == "backup":
@@ -345,7 +367,7 @@ def main():
                 if args.spell_card_phase_command == 'status':
                     spell_card.phases[ args.phase ].full_status(
                         level=args.level )
-                if args.spell_card_phase_command == 'execute':
+                elif args.spell_card_phase_command == 'execute':
                     if not args.args:
                         phase_args = Chibi_atlas()
                     else:
@@ -356,6 +378,8 @@ def main():
                     else:
                         spell_card.phases[ args.phase ].run(
                             force=args.force, **phase_args )
+                elif args.spell_card_phase_command == 'enable':
+                    spell_card.phases[ args.phase ].enable()
             else:
                 spell_card.check_phases()
         elif args.spell_card_command == "fstab":
