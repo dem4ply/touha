@@ -28,7 +28,7 @@ class Wireless_common( Service ):
 
     @property
     def config_file( self ):
-        path= self.spell_card.root + 'etc/wpa_supplicant/commond.conf'
+        path= self.spell_card.root + 'etc/wpa_supplicant/common.conf'
         return Chibi_path(
             path, chibi_file_class=Chibi_wpa_supplicant_conf )
 
