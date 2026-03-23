@@ -3,6 +3,7 @@ import logging
 from chibi.snippet.dict import remove_nones
 from chibi_atlas import Chibi_atlas
 from chibi_atlas.multi import Chibi_atlas_multi
+from chibi.file import Chibi_path
 
 from touha.phases import Phase
 from touha.snippets import is_in_level
@@ -24,8 +25,11 @@ class Service( Phase ):
 
     @property
     def status( self ):
+        if not self.config_file:
+            return self.status_without_config
+
         if self.service.exists and self.config_file.exists:
-            if self.config_file.is_empty:
+            if self.config_file.open().is_empty:
                 return "empty config"
             return "exists"
         elif not self.service.exists and self.config_file.exists:
@@ -34,7 +38,19 @@ class Service( Phase ):
             return "missing config"
         return "OK"
 
+    @property
+    def status_without_config( self ):
+        if self.service.exists:
+            return "exists"
+        elif not self.service.exists:
+            return "missing service"
+        return "OK"
+
     def full_status( self, f_logger=None, level="info" ):
+        if not self.config_file:
+            return self.full_status_without_config(
+                f_logger=f_logger, level=level )
+
         if not f_logger:
             f_logger = print
         else:
@@ -50,6 +66,13 @@ class Service( Phase ):
             else:
                 status = "missing"
             f_logger( f"{self.config_file}: {status}" )
+
+            check = self.wanted_service_link
+            if check.exists:
+                status = "enabled"
+            else:
+                status = "disabled"
+            f_logger( f"{check}: {status}" )
         if is_in_level( level, 'debug' ):
             f_logger( f"Contenido del archivo '{self.service}'" )
             f = self.service.open()
@@ -61,7 +84,26 @@ class Service( Phase ):
             text = f.file.read()
             print( text )
 
+    def full_status_without_config( self, f_logger=None, level="info" ):
+        if not f_logger:
+            f_logger = print
+        else:
+            raise NotImplementedError
+        if is_in_level( level, 'info' ):
+            if self.service.exists:
+                status = "exists"
+            else:
+                status = "missing"
+            f_logger( f"{self.service}: {status}" )
+        if is_in_level( level, 'debug' ):
+            f_logger( f"Contenido del archivo '{self.service}'" )
+            f = self.service.open()
+            text = f.file.read()
+            print( text )
+
     def run( self, force=False, **kw ):
+        if not self.config_file:
+            return self.run_without_config( force=force, **kw )
         if not force and self.service.exists:
             logger.info(
                 f"el servicio {self.service} existe en el "
@@ -76,19 +118,63 @@ class Service( Phase ):
         else:
             self.config_file.touch()
 
-        if self.validate_args( kw ):
-            config_data = self.build_config_data( kw )
+        if self.validate_args( force=force, **kw ):
+            config_data = self.build_config_data( **kw )
             self.write_config_data( config_data, force=force )
 
-    def build_config_data( self ):
+    def run_without_config( self, force=False, **kw ):
+        if not force and self.service.exists:
+            logger.info(
+                f"el servicio {self.service} existe en el "
+                "spellcard, se omite la creacion" )
+        else:
+            self.service.open().write( self.service_content )
+
+    def enable( self ):
+        if not self.wanted_path.exists:
+            raise NotImplementedError(
+                f'el path de wanted no existe "{self.wanted_path}"' )
+        full_wanted_name = self.wanted_service_link
+        if full_wanted_name.exists:
+            raise NotImplementedError(
+                f'el servicio ya esta habilitado "{full_wanted_name}"' )
+        absolut_path_in_sd = (
+            Chibi_path( '/' )
+            + full_wanted_name.relative_to( self.spell_card.root )
+        )
+        self.service.link( absolut_path_in_sd )
+
+    def validate_args( self, **kw ):
+        raise NotImplementedError
+
+    def build_config_data( self, **kw ):
         raise NotImplementedError
 
     def write_config_data( self, config_data, force=False ):
         if config_data:
-            config.write( config_data )
+            self.config_file.open().write( config_data )
         else:
             raise NotImplementedError
 
     @property
     def service_content( self ):
         raise NotImplementedError
+
+    @property
+    def wanted_path( self ):
+        return (
+            self.spell_card.root + "etc/systemd/system/" +
+            f'{self.wanted_by}.wants'
+        )
+
+    @property
+    def wanted_service_link( self ):
+        return self.wanted_path + self.service.base_name
+
+    @property
+    def wanted_by( self ):
+        service = self.service.open().read()
+        result = service.install.WantedBy
+        if not result:
+            raise NotImplementedError
+        return result

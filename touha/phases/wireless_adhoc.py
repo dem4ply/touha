@@ -6,12 +6,13 @@ from chibi_atlas.multi import Chibi_atlas_multi
 
 from touha.phases import Phase
 from touha.snippets import is_in_level
+from touha.phases.service import Service
 
 
 logger = logging.getLogger( "touha.spell_card.phase.wireless_adhoc" )
 
 
-class Wireless_adhoc( Phase ):
+class Wireless_adhoc( Service ):
     name = "wireless_adhoc"
 
     @property
@@ -23,48 +24,10 @@ class Wireless_adhoc( Phase ):
         return self.spell_card.wlan0_adhoc_config
 
     @property
-    def status( self ):
-        if self.service.exists and self.config_file.exists:
-            if self.config_file.is_empty:
-                return "empty config"
-            return "exists"
-        elif not self.service.exists and self.config_file.exists:
-            return "missing service"
-        elif self.service.exists and not self.config_file.exists:
-            return "missing config"
-        return "OK"
-
-    def full_status( self, f_logger=None, level="info" ):
-        if not f_logger:
-            f_logger = print
-        else:
-            raise NotImplementedError
-        if is_in_level( level, 'info' ):
-            if self.service.exists:
-                status = "exists"
-            else:
-                status = "missing"
-            f_logger( f"{self.service}: {status}" )
-            if self.config_file.exists:
-                status = "exists"
-            else:
-                status = "missing"
-            f_logger( f"{self.config_file}: {status}" )
-        if is_in_level( level, 'debug' ):
-            f_logger( f"Contenido del archivo '{self.service}'" )
-            f = self.service.open()
-            text = f.file.read()
-            print( text )
-
-            f_logger( f"Contenido del archivo '{self.config_file}'" )
-            f = self.config_file.open()
-            text = f.file.read()
-            print( text )
-
-    @property
     def is_missing( self ):
         return self.status != "ok"
 
+    """
     def run( self, force=False, **kw ):
         if not force and self.service.exists:
             logger.info(
@@ -102,6 +65,36 @@ class Wireless_adhoc( Phase ):
             logger.info(
                 "no se mandaron los parametros IP o MASK para la fase"
                 "se ignora su actualizacion" )
+    """
+
+    def validate_args( self, **kw ):
+        if kw and ( 'IP' in kw or 'MASK' in kw ):
+            return True
+        else:
+            logger.info(
+                "no se mandaron los parametros IP o MASK para la fase"
+                "se ignora su actualizacion" )
+
+    def build_config_data( self, **kw ):
+        config = self.config_file.open()
+        config_data = config.read()
+        try:
+            config_data.IP = kw.get( 'IP', config_data.IP )
+        except AttributeError:
+            config_data.IP = kw.get( 'IP', None )
+        try:
+            config_data.MASK = kw.get( 'MASK', config_data.MASK )
+        except AttributeError:
+            config_data.MASK = kw.get( 'MASK', None )
+
+        config_data = remove_nones( config_data )
+        return config_data
+
+    def write_config_data( self, config_data, force=False ):
+        if config_data:
+            self.config_file.open().write( config_data )
+        else:
+            raise NotImplementedError
 
     @property
     def service_content( self ):

@@ -3,111 +3,58 @@ import logging
 from chibi.snippet.dict import remove_nones
 from chibi_atlas import Chibi_atlas
 from chibi_atlas.multi import Chibi_atlas_multi
+from chibi.file import Chibi_path
+from chibi.file.other import Chibi_systemd
+from chibi_wpa_supplicant import Chibi_wpa_supplicant_conf
 
 from touha.phases import Phase
 from touha.snippets import is_in_level
+from touha.phases.service import Service
 
 
-logger = logging.getLogger( "touha.spell_card.phase.wireless_adhoc" )
+logger = logging.getLogger( "touha.spell_card.phase.wireless_common" )
 
 
-class Wireless_adhoc( Phase ):
-    name = "wireless_adhoc"
+class Wireless_common( Service ):
+    name = "wireless_common"
 
     @property
     def service( self ):
-        return self.spell_card.adhoc_service
+        path = (
+            self.spell_card.root
+            + 'etc/systemd/system/network_wireless_common@.service' )
+        path = Chibi_path( path, chibi_file_class=Chibi_systemd )
+        return path
 
     @property
     def config_file( self ):
-        return self.spell_card.wlan0_adhoc_config
+        path= self.spell_card.root + 'etc/wpa_supplicant/commond.conf'
+        return Chibi_path(
+            path, chibi_file_class=Chibi_wpa_supplicant_conf )
 
-    @property
-    def status( self ):
-        if self.service.exists and self.config_file.exists:
-            if self.config_file.is_empty:
-                return "empty config"
-            return "exists"
-        elif not self.service.exists and self.config_file.exists:
-            return "missing service"
-        elif self.service.exists and not self.config_file.exists:
-            return "missing config"
-        return "OK"
-
-    def full_status( self, f_logger=None, level="info" ):
-        if not f_logger:
-            f_logger = print
-        else:
-            raise NotImplementedError
-        if is_in_level( level, 'info' ):
-            if self.service.exists:
-                status = "exists"
-            else:
-                status = "missing"
-            f_logger( f"{self.service}: {status}" )
-            if self.config_file.exists:
-                status = "exists"
-            else:
-                status = "missing"
-            f_logger( f"{self.config_file}: {status}" )
-        if is_in_level( level, 'debug' ):
-            f_logger( f"Contenido del archivo '{self.service}'" )
-            f = self.service.open()
-            text = f.file.read()
-            print( text )
-
-            f_logger( f"Contenido del archivo '{self.config_file}'" )
-            f = self.config_file.open()
-            text = f.file.read()
-            print( text )
-
-    @property
-    def is_missing( self ):
-        return self.status != "ok"
-
-    def run( self, force=False, **kw ):
-        if not force and self.service.exists:
-            logger.info(
-                f"el servicio {self.service} existe en el "
-                "spellcard, se omite la creacion" )
-        else:
-            self.service.open().write( self.service_content )
-
-        if not force and self.config_file.exists:
-            logger.info(
-                f"el config file de {self.config_file} existe en el "
-                "spellcard, se omite la creacion" )
-        else:
-            self.config_file.touch()
-
-        if kw and ( 'IP' in kw or 'MASK' in kw ):
-            config = self.config_file.open()
-            config_data = config.read()
-            try:
-                config_data.IP = kw.get( 'IP', config_data.IP )
-            except AttributeError:
-                config_data.IP = kw.get( 'IP', None )
-            try:
-                config_data.MASK = kw.get( 'MASK', config_data.MASK )
-            except AttributeError:
-                config_data.MASK = kw.get( 'MASK', None )
-
-            config_data = remove_nones( config_data )
-
-            if not force and config_data:
-                config.write( config_data )
-            else:
-                raise NotImplementedError
+    def validate_args( self, *, force=False, wpa_config, **kw ):
+        wpa_config = Chibi_path(
+            wpa_config, chibi_file_class=Chibi_wpa_supplicant_conf )
+        if force or not wpa_config.exists:
+            return True
         else:
             logger.info(
-                "no se mandaron los parametros IP o MASK para la fase"
-                "se ignora su actualizacion" )
+                f'No se encontro la configuracion de "{wpa_config}"'
+                "configuracion de wpa, se omite la actualzacion del config" )
+
+    def build_config_data( self, *, wpa_config, **kw ):
+        wpa_config = Chibi_path(
+            wpa_config, chibi_file_class=Chibi_wpa_supplicant_conf )
+        content = wpa_config.open().read()
+        return content
 
     @property
     def service_content( self ):
         result = Chibi_atlas()
         result.unit = Chibi_atlas()
-        result.unit.Description = "Ad-hoc wireless network for gensokyo(%i)"
+        result.unit.Description = (
+            "Se connecta a una de las wifis que estan en "
+            "common.conf usando %i" )
         result.unit.Wants = "network.target"
         result.unit.Before = "network.target"
         result.unit.BindsTo = "sys-subsystem-net-devices-%i.device"
@@ -116,17 +63,14 @@ class Wireless_adhoc( Phase ):
         result.service = Chibi_atlas_multi()
         result.service.Type = 'oneshot'
         result.service.RemainAfterExit = 'yes'
-        result.service.EnvironmentFile = (
-            '/etc/conf.d/network_wireless_adhoc@%i'
-        )
         result.service.ExecStart = '/usr/bin/rfkill unblock wifi'
         result.service.ExecStart = '/usr/bin/ip link set %i up'
         result.service.ExecStart = (
-            '/usr/bin/wpa_supplicant -B -i %i -D nl80211,wext -c '
-            '/etc/wpa_supplicant/adhoc_gensokyo.conf'
+            '/usr/bin/wpa_supplicant -B -i %i -c '
+            '/etc/wpa_supplicant/common.conf'
         )
-        result.service.ExecStart = (
-            '/usr/bin/ip addr add ${addr}/${mask} dev %i' )
+        result.service.ExecStart = ( '/usr/bin/dhcpcd %i' )
+
         result.service.ExecStop = '/usr/bin/ip addr flush dev %i'
         result.service.ExecStop = '/usr/bin/ip link set %i down'
 

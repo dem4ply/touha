@@ -25,3 +25,17 @@ class Phase:
     def full_status( self ):
         raise NotImplementedError(
             f"el full status para la fase {self.name} no esta implementado" )
+
+    def _status_file( self, path ):
+        if path.exists:
+            status = "exists"
+        else:
+            status = "missing"
+        return f"{path}: {status}"
+
+    def _status_full_file( self, path ):
+        f = path.open()
+        text = f.read_text()
+        result = [ f"Contenido del archivo '{path}'" ]
+        result.append( text )
+        return "\n".join( result )
