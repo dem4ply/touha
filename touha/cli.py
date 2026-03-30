@@ -26,6 +26,8 @@ from touha.snippets import get_boot_root, parse_phase_execute_args
 from chibi.config import basic_config, load as load_config
 from chibi.config import default_file_load, configuration
 
+from touha.phases.liver import Touha_liver as Liver
+
 logger_formarter = '%(levelname)s %(name)s %(asctime)s %(message)s'
 logger = logging.getLogger( 'touhas.cli' )
 
@@ -325,6 +327,46 @@ def build_args():
 
     parser_blocks = sub_parsers.add_parser( 'blocks', help='print lsblk', )
 
+    parser_liver = sub_parsers.add_parser(
+        'liver', help='usa los contenedores tipo liver', )
+    parser_liver.add_argument(
+        "--host", dest='host',
+        help="host del liver", )
+    parser_liver.add_argument(
+        "--user", '-u', dest='user',
+        help="usuario del liver", )
+
+    parser_liver.add_argument(
+        "-i", dest='identity_file',
+        help="archivo con la clave de identificacion del liver", )
+
+    parser_liver_command = parser_liver.add_subparsers(
+        dest='liver_command', help='comandos para livers' )
+
+    parser_liver_status = parser_liver_command.add_parser(
+        'status', help='ejecuta el status del liver', )
+
+    parser_liver_attach = parser_liver_command.add_parser(
+        'attach', help='hace un attach con ssh', )
+
+    parser_liver_phase = parser_liver_command.add_parser(
+        'phase', help='ejecuta phase del liver', )
+
+    parser_liver_phase.add_argument(
+        "phase", default='all',
+        help="nombre de la fase que se ejecutara", )
+
+    parser_liver_phase_command = parser_liver_phase.add_subparsers(
+        dest='liver_phase_command', help='comandos para las fases de livers' )
+
+    parser_liver_phase_status = parser_liver_phase_command.add_parser(
+        'status', help='imprime el status de la fase para el liver', )
+
+    parser_liver_phase_execute = (
+        parser_liver_phase_command.add_parser(
+        'execute', help='ejecuta fases del liver', )
+    )
+
     args = parser.parse_args()
     return args
 
@@ -350,6 +392,35 @@ def main():
             unmount_on_dead=False )
     elif args.command == 'umount':
         Spell_card( mount_path=args.backup_path, unmount_on_dead=True )
+    elif args.command == 'liver':
+        liver = Liver(
+            host=args.host, user=args.user,
+            identity_file=args.identity_file )
+        if args.liver_command == 'status':
+            status = liver.status()
+            if status:
+                print( "status: OK" )
+            else:
+                print( "status: no signal" )
+        if args.liver_command == 'attach':
+            liver.attach()
+        if args.liver_command == 'phase':
+            phase_name = args.phase
+            if args.liver_phase_command == 'status':
+                if phase_name == 'all':
+                    for phase in liver.phases:
+                        print( liver.phases[ phase ].status )
+                else:
+                    print( liver.phases[ args.phase ].status )
+            elif args.liver_phase_command == 'execute':
+                print( liver.phases[ args.phase ].run() )
+            else:
+                raise NotImplementedError(
+                    f"comando de fase '{args.liver_phase_command}' "
+                    "no implementado" )
+        else:
+            raise NotImplementedError(
+                f"comando '{args.liver_command}' no implementado" )
     elif args.command == 'spell_card':
         spell_card = Spell_card(
             block=args.block, mount_path=args.backup_path,

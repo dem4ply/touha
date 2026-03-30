@@ -126,7 +126,7 @@ class Spell_card:
             Wireless_common( self ),
             Sshd( self ),
         ]
-        return { p.name: p for p in phases_list }
+        return Chibi_atlas( { p.name: p for p in phases_list } )
 
     def check_phases( self ):
         """
